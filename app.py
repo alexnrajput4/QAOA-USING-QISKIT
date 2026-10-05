@@ -1,4 +1,3 @@
-"""Streamlit demo: quantum portfolio picker (QAOA).   Run:  streamlit run app.py"""
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -8,7 +7,7 @@ from portfolio_qaoa import (QAOA, bitstring, int_to_bits, make_problem, portfoli
                             problem_from_prices, solve)
 
 try:
-    import qiskit  # noqa: F401
+    import qiskit  
 
     HAS_QISKIT = True
 except ImportError:
@@ -19,7 +18,7 @@ st.title("Quantum portfolio picker (QAOA)")
 st.caption("Choose exactly K of N assets that balance expected return against risk. "
            "A QAOA circuit (Qiskit) proposes portfolios; brute force and greedy search are the baselines.")
 
-# ------------------------------------------------------------------ sidebar
+
 with st.sidebar:
     st.header("Problem")
     source = st.radio("Data", ["Synthetic demo data", "Upload prices CSV"])
@@ -79,7 +78,7 @@ def pick(b):
     return ", ".join(nm for nm, bit in zip(names, int_to_bits(b, n)) if bit)
 
 
-# ------------------------------------------------------------------ headline metrics
+
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Valid portfolios in QAOA output", f"{r['p_feasible'] * 100:.0f}%",
           f"random bitstring: {r['p_random_feasible'] * 100:.0f}%", delta_color="off")
@@ -90,7 +89,7 @@ c3.metric("Probability on best 5 portfolios", f"{r['p_top5'] * 100:.0f}%",
           f"random: {r['p_random_top5'] * 100:.0f}%", delta_color="off")
 c4.metric("Greedy gap to optimum", f"{r['gap_greedy'] * 100:.1f}%", delta_color="off")
 
-# ------------------------------------------------------------------ comparison table
+
 rows = []
 for label, b, e in (("Brute force (optimal)", r["optimal"], r["optimal_energy"]),
                     ("Greedy", r["greedy"], r["greedy_energy"]),
@@ -106,7 +105,7 @@ st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 st.caption("Objective = risk_aversion * variance - expected return (lower is better), equal weights on the "
            "K chosen assets.")
 
-# ------------------------------------------------------------------ charts
+
 t1, t2, t3, t4 = st.tabs(["Solution map", "QAOA output", "Circuit", "About & honest caveats"])
 with t1:
     st.pyplot(viz.fig_frontier(r))
@@ -119,7 +118,7 @@ with t3:
         try:
             diff = r["qaoa"].verify_with_qiskit(r["result"].params)
             st.success(f"Qiskit circuit vs fast numpy engine: max probability difference {diff:.1e}")
-        except Exception as exc:  # keep the demo alive
+        except Exception as exc:  
             st.warning(f"Cross-check unavailable: {exc}")
         qc = r["qaoa"].circuit
         st.write(f"Full circuit (p={r['qaoa'].p}): {qc.num_qubits} qubits, depth {qc.depth()}, "
