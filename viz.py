@@ -1,17 +1,12 @@
-"""Charts for the QAOA portfolio demo (matplotlib; used by app.py and testable headless).
-
-Colours: first three slots of a validated categorical palette (safe for all-pairs
-scatter use). Text stays in ink tokens; colour is carried by the marks only.
-"""
 from __future__ import annotations
 
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
+import matplotlib.pyplot as plt 
+import numpy as np 
 
-from portfolio_qaoa import bitstring, int_to_bits, portfolio_stats  # noqa: E402
+from portfolio_qaoa import bitstring, int_to_bits, portfolio_stats  
 
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e6e5e1"
 BLUE, ORANGE, AQUA, MUTED = "#2a78d6", "#eb6834", "#1baf7a", "#b9b8b2"
@@ -48,7 +43,7 @@ def fig_frontier(r: dict):
                    edgecolor=SURFACE, linewidth=2, zorder=4, label=label)
         return s
 
-    # Optimum is drawn largest so it stays visible when another solver lands on it.
+
     items = [("optimal", r["optimal"], ORANGE, "Optimal (brute force)", "o", 300),
              ("greedy", r["greedy"], AQUA, "Greedy baseline", "s", 100)]
     if r["qaoa_best"] is not None:
@@ -91,7 +86,7 @@ def fig_distribution(r: dict, top: int = 12):
 def fig_convergence(r: dict):
     from matplotlib.ticker import MaxNLocator
 
-    h = np.minimum.accumulate(np.asarray(r["result"].history, dtype=float))  # best so far
+    h = np.minimum.accumulate(np.asarray(r["result"].history, dtype=float))  
     fig, ax = plt.subplots(figsize=(6.4, 3.0))
     _style(ax, fig)
     ax.plot(range(len(h)), h, color=BLUE, linewidth=2)
@@ -103,7 +98,7 @@ def fig_convergence(r: dict):
     return fig
 
 
-if __name__ == "__main__":  # quick headless render for eyeballing
+if __name__ == "__main__": 
     import sys
 
     from portfolio_qaoa import solve
