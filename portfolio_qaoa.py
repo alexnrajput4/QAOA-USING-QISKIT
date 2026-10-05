@@ -1,22 +1,3 @@
-"""
-Quantum portfolio selection with QAOA.
-
-Problem: pick exactly K of N assets that maximise return and minimise risk.
-
-    minimise   risk * x^T Sigma x  -  mu^T x  +  P * (sum(x) - K)^2,   x in {0,1}^N
-
-The penalty term P turns the "exactly K assets" constraint into part of the
-QUBO. The QUBO is mapped to an Ising Hamiltonian (x = (1 - z) / 2) and solved
-with a hand-built QAOA circuit. Only qiskit *core* is needed (QuantumCircuit +
-Statevector), which keeps this robust against qiskit-algorithms API churn.
-
-Two interchangeable simulation backends build the SAME circuit:
-  * "qiskit": QuantumCircuit + Statevector (the one to show judges)
-  * "numpy" : exact statevector in plain numpy (fast, used for tests/fallback)
-
-Bit order convention: qubit i is bit i of the basis-state integer
-(Qiskit's little-endian convention).
-"""
 from __future__ import annotations
 
 import argparse
@@ -24,10 +5,6 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.optimize import minimize
-
-# --------------------------------------------------------------------------
-# Problem generation and QUBO
-# --------------------------------------------------------------------------
 
 
 def make_problem(n: int = 8, seed: int = 7):
@@ -54,7 +31,7 @@ def all_bits(n: int) -> np.ndarray:
 
 @dataclass
 class Qubo:
-    Q: np.ndarray  # symmetric matrix, energy(x) = x^T Q x + const
+    Q: np.ndarray  
     const: float
     k: int
     mu: np.ndarray
@@ -101,7 +78,6 @@ def build_qubo(mu, sigma, k: int, risk: float = 0.5, penalty: float | None = Non
     sigma = np.asarray(sigma, dtype=float)
     n = len(mu)
     if penalty is None:
-        # Large enough that violating the budget never pays off.
         penalty = 1.5 * (mu.max() + risk * np.abs(sigma).sum() / n)
     q = risk * sigma + penalty * np.ones((n, n))
     q[np.diag_indices(n)] += -mu - 2.0 * penalty * k
@@ -114,7 +90,7 @@ def to_ising(q: Qubo):
     Q = (q.Q + q.Q.T) / 2.0
     n = len(Q)
     h = -0.5 * Q.sum(axis=1)
-    J = np.triu(Q, 1) * 0.5  # for symmetric Q: (Q_ij + Q_ji) / 4 = Q_ij / 2
+    J = np.triu(Q, 1) * 0.5  
     offset = q.const + 0.25 * Q.sum() + 0.25 * np.trace(Q)
     return h, J, float(offset)
 
@@ -123,10 +99,6 @@ def ising_energy_all(h, J, offset, n) -> np.ndarray:
     z = 1 - 2 * all_bits(n)
     return offset + z @ h + np.einsum("bi,ij,bj->b", z, J, z)
 
-
-# --------------------------------------------------------------------------
-# Classical baselines
-# --------------------------------------------------------------------------
 
 
 def brute_force(q: Qubo):
@@ -170,17 +142,12 @@ def portfolio_stats(x, mu, sigma) -> dict:
     return {"return": ret, "risk": vol, "sharpe_like": ret / vol if vol > 0 else float("nan")}
 
 
-# --------------------------------------------------------------------------
-# QAOA
-# --------------------------------------------------------------------------
-
-
 @dataclass
 class QAOAResult:
-    params: np.ndarray  # [gamma_1..gamma_p, beta_1..beta_p]
-    expectation: float  # <C> in normalised units
-    probs: np.ndarray  # probability of every basis state
-    history: list  # <C> after each optimiser evaluation of the best restart
+    params: np.ndarray 
+    expectation: float 
+    probs: np.ndarray 
+    history: list  
     n_evals: int
 
 
@@ -208,7 +175,7 @@ class QAOA:
         self.alpha = alpha
         self._source = qubo
         self.k = qubo.k
-        if mixer == "xy":  # penalty is constant on the feasible subspace -> drop it
+        if mixer == "xy":  
             base = build_qubo(qubo.mu, qubo.sigma, qubo.k, qubo.risk, penalty=0.0)
             self.qubo = base.normalized(feasible_only=True, span=span)
         else:
@@ -217,7 +184,7 @@ class QAOA:
         self.p = p
         self.n = qubo.n
         self.backend = backend
-        self.energies = self.qubo.energy_all()  # normalised, feasible range is [0, span]
+        self.energies = self.qubo.energy_all()  
         self._order = np.argsort(self.energies)
         self.h, self.J, self.offset = to_ising(self.qubo)
         self.pairs = [(i, (i + 1) % self.n) for i in range(self.n)] if self.n > 2 else [(0, 1)]
@@ -225,7 +192,7 @@ class QAOA:
         if backend == "qiskit":
             self._build_circuit()
 
-    # ---- qiskit circuit ---------------------------------------------------
+    
     def _build_circuit(self):
         from qiskit import QuantumCircuit
         from qiskit.circuit import ParameterVector
@@ -235,29 +202,29 @@ class QAOA:
         self.bet = ParameterVector("beta", p)
         qc = QuantumCircuit(n)
         if self.mixer == "xy":
-            for i in range(self.k):  # Hamming-weight-k starting state
+            for i in range(self.k):  
                 qc.x(i)
         else:
             qc.h(range(n))
         for layer in range(p):
             g, b = self.gam[layer], self.bet[layer]
-            for i in range(n):  # exp(-i g h_i Z_i)  == RZ(2 g h_i)
+            for i in range(n):  
                 qc.rz(2 * float(self.h[i]) * g, i)
-            for i in range(n):  # exp(-i g J_ij Z_i Z_j) == RZZ(2 g J_ij)
+            for i in range(n):  
                 for j in range(i + 1, n):
                     if abs(self.J[i, j]) > 1e-12:
                         qc.rzz(2 * float(self.J[i, j]) * g, i, j)
             qc.barrier()
             if self.mixer == "xy":
-                for i, j in self.pairs:  # exp(-i b (XX + YY)) == RXX(2b) RYY(2b)
+                for i, j in self.pairs:  
                     qc.rxx(2 * b, i, j)
                     qc.ryy(2 * b, i, j)
             else:
-                for i in range(n):  # mixer exp(-i b X_i) == RX(2 b)
+                for i in range(n):  
                     qc.rx(2 * b, i)
         self.circuit = qc
 
-    # ---- simulation ------------------------------------------------------
+    
     def probabilities(self, params) -> np.ndarray:
         params = np.asarray(params, dtype=float)
         gammas, betas = params[: self.p], params[self.p:]
@@ -276,14 +243,14 @@ class QAOA:
         idx = np.arange(N)
         if self.mixer == "xy":
             psi = np.zeros(N, dtype=complex)
-            psi[(1 << self.k) - 1] = 1.0  # qubits 0..k-1 set
+            psi[(1 << self.k) - 1] = 1.0  
         else:
             psi = np.full(N, 1 / np.sqrt(N), dtype=complex)
         for g, b in zip(gammas, betas):
-            psi = psi * np.exp(-1j * g * self.energies)  # cost layer (diagonal)
+            psi = psi * np.exp(-1j * g * self.energies)  
             if self.mixer == "xy":
                 c, s = np.cos(2 * b), -1j * np.sin(2 * b)
-                for i, j in self.pairs:  # exp(-i b (XX+YY)): rotates |01> <-> |10>
+                for i, j in self.pairs:  
                     differ = ((idx >> i) & 1) != ((idx >> j) & 1)
                     partner = idx ^ ((1 << i) | (1 << j))
                     new = psi.copy()
@@ -292,7 +259,7 @@ class QAOA:
             else:
                 c, s = np.cos(b), -1j * np.sin(b)
                 psi = psi.reshape((2,) * n)
-                for ax in range(n):  # mixer: RX on every qubit
+                for ax in range(n):  
                     a0 = np.take(psi, 0, axis=ax)
                     a1 = np.take(psi, 1, axis=ax)
                     psi = np.stack([c * a0 + s * a1, s * a0 + c * a1], axis=ax)
@@ -302,7 +269,7 @@ class QAOA:
     def expectation(self, params) -> float:
         return float(self.probabilities(params) @ self.energies)
 
-    # ---- optimisation ----------------------------------------------------
+    
     def cvar(self, probs) -> float:
         """Mean energy of the best `alpha` fraction of the measurement distribution."""
         ps = probs[self._order]
@@ -350,7 +317,7 @@ class QAOA:
 
             return minimize(f, x0, method="L-BFGS-B", options={"maxiter": maxiter})
 
-        k = 2 * np.pi / self.span  # keep the angle grid meaningful for any span
+        k = 2 * np.pi / self.span  
         grid = [(g * k, b) for g in np.linspace(0.05, 1.0, 12) for b in np.linspace(0.05, 1.5, 10)]
         scored = sorted(grid, key=lambda gb: self._np_expectation(np.array(gb)))
         n_evals += len(grid)
@@ -383,7 +350,7 @@ class QAOA:
         return float(np.max(np.abs(twin.probabilities(params) - self._numpy_probs(
             np.asarray(params[: self.p]), np.asarray(params[self.p:])))))
 
-    # ---- measurement -----------------------------------------------------
+
     def sample(self, probs, shots: int = 2048, seed: int = 1) -> dict:
         rng = np.random.default_rng(seed)
         probs = probs / probs.sum()
@@ -411,13 +378,13 @@ def solve(n=8, k=4, risk=0.5, p=3, restarts=3, shots=2048, seed=2,
     counts = qaoa.sample(res.probs, shots=shots, seed=seed)
 
     feas = q.feasible_mask()
-    # Best feasible bitstring actually *measured* (what you'd get on hardware).
+
     measured_feasible = [b for b in counts if feas[b]]
     qaoa_b = min(measured_feasible, key=lambda b: q.energy_all()[b]) if measured_feasible else None
 
-    order = np.where(feas)[0][np.argsort(q.energy_all()[feas])]  # feasible, best first
+    order = np.where(feas)[0][np.argsort(q.energy_all()[feas])]  
     n_feas = int(feas.sum())
-    uniform_over = n_feas if mixer == "xy" else 2**n  # what "random guessing" means here
+    uniform_over = n_feas if mixer == "xy" else 2**n  
     qaoa_e = q.energy_all()[qaoa_b] if qaoa_b is not None else None
     return {
         "p_top5": float(res.probs[order[:5]].sum()),
@@ -434,11 +401,6 @@ def solve(n=8, k=4, risk=0.5, p=3, restarts=3, shots=2048, seed=2,
         "p_random_optimal": 1.0 / uniform_over,
         "p_random_feasible": float(feas.mean()),
     }
-
-
-# --------------------------------------------------------------------------
-# CLI / self-test
-# --------------------------------------------------------------------------
 
 
 def selftest():
@@ -463,7 +425,7 @@ def selftest():
 
     print("4) qiskit circuit matches numpy simulator (both mixers) ...", end=" ")
     try:
-        import qiskit  # noqa: F401
+        import qiskit  
     except ImportError:
         print("skipped (qiskit not installed)")
     else:
@@ -484,7 +446,7 @@ def _reference_probs(qaoa: "QAOA", params) -> np.ndarray:
     X = np.array([[0, 1], [1, 0]], dtype=complex)
     Y = np.array([[0, -1j], [1j, 0]])
 
-    def op(single, i):  # little-endian: qubit n-1 is the leftmost factor
+    def op(single, i):  
         m = np.array([[1.0]])
         for q in reversed(range(n)):
             m = np.kron(m, single if q == i else I2)
